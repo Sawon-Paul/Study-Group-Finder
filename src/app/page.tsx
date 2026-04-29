@@ -32,9 +32,6 @@ export default function HomePage() {
             <Link href="/register" className="flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-xl text-lg font-bold hover:bg-blue-700 hover:shadow-lg transition-all">
               Get Started for Free <ArrowRight size={20} />
             </Link>
-            <Link href="/groups" className="flex items-center justify-center gap-2 bg-white text-gray-700 border-2 border-gray-200 px-8 py-4 rounded-xl text-lg font-bold hover:border-blue-200 hover:bg-blue-50 transition-all">
-              Browse Courses
-            </Link>
           </div>
         </div>
 
