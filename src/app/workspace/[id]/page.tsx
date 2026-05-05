@@ -1,9 +1,8 @@
 // src/app/workspace/[id]/page.tsx
-import { getGroupWorkspaceData, resolveRequest } from '@/controllers/groupController'
+import { getGroupWorkspaceData, resolveRequest, addResource, deleteResource } from '@/controllers/groupController'
 import Link from 'next/link'
 import { ArrowLeft, Users, MapPin, BookOpen, GraduationCap, Paperclip, Check, X, Calendar } from 'lucide-react'
 import { notFound } from 'next/navigation'
-import { addResource } from '@/controllers/groupController'
 import ReportButton from '@/components/ReportButton'
 
 export const dynamic = 'force-dynamic';
