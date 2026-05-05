@@ -9,7 +9,6 @@ import { ArrowLeft, Users } from 'lucide-react'
 
 export default function CreateGroupPage() {
   const router = useRouter()
-  // This grabs the course ID from the URL (e.g., /groups/123/create -> id is 123)
   const params = useParams() 
   const courseId = params.id as string
 
@@ -28,7 +27,6 @@ export default function CreateGroupPage() {
     const location_preference = formData.get('location') as string
 
     try {
-      // 1. Get the current logged-in user
       const { data: { user } } = await supabase.auth.getUser()
       
       if (!user) {
@@ -36,8 +34,8 @@ export default function CreateGroupPage() {
         return
       }
 
-      // 2. Save the new group to the database
-      const { error: insertError } = await supabase
+      // 1. Save the new group AND ask Supabase to return the new data (.select().single())
+      const { data: newGroup, error: insertError } = await supabase
         .from('study_groups')
         .insert({
           course_id: courseId,
@@ -46,15 +44,26 @@ export default function CreateGroupPage() {
           type,
           location_preference,
         })
+        .select()
+        .single()
 
       if (insertError) {
         setError(insertError.message)
         return
       }
 
-      // 3. Success! Send them back to the course page to see their new group
+      // 2. THE FIX: Automatically add the creator as a full member!
+      if (newGroup) {
+        await supabase
+          .from('group_members')
+          .insert({
+            group_id: newGroup.id,
+            user_id: user.id
+          })
+      }
+
       router.push(`/groups/${courseId}`)
-      router.refresh() // This forces Next.js to fetch the new group immediately
+      router.refresh()
 
     } catch (err) {
       console.error("Failed to create group:", err)

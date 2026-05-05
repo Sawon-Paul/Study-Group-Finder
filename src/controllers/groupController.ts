@@ -3,138 +3,130 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { revalidatePath } from 'next/cache' // Needed to refresh pages after actions
 import { StudyGroup } from '@/models/group'
 import { Course } from '@/models/course'
 
-// 1. Fetches specific course details
 export async function getCourseDetails(courseId: string): Promise<Course | null> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  
-  const { data, error } = await supabase
-    .from('courses')
-    .select('*')
-    .eq('id', courseId)
-    .single();
-    
-  if (error) return null;
-  return data as Course;
+  const { data, error } = await supabase.from('courses').select('*').eq('id', courseId).single();
+  return error ? null : data as Course;
 }
 
-// 2. Fetches all study groups linked to a specific course
 export async function getGroupsByCourse(courseId: string): Promise<StudyGroup[]> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  
-  const { data, error } = await supabase
-    .from('study_groups')
-    .select('*')
-    .eq('course_id', courseId)
-    .order('created_at', { ascending: false });
-    
-  if (error) {
-    console.error("Error fetching groups:", error.message);
-    return [];
-  }
-  
-  return data as StudyGroup[];
+  const { data, error } = await supabase.from('study_groups').select('*').eq('course_id', courseId).order('created_at', { ascending: false });
+  return error ? [] : data as StudyGroup[];
 }
 
-// 3. Allows the current user to join a group
 export async function joinGroup(groupId: string) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-
-  const { error } = await supabase
-    .from('group_members')
-    .insert({ group_id: groupId, user_id: user.id });
-
+  const { error } = await supabase.from('group_members').insert({ group_id: groupId, user_id: user.id });
   if (error) throw new Error(error.message);
   return { success: true };
 }
 
-// 4. Checks if the current user is already in a specific group
 export async function checkMembership(groupId: string) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return { isMember: false, isPending: false };
 
-  const { data } = await supabase
-    .from('group_members')
-    .select('*')
-    .eq('group_id', groupId)
-    .eq('user_id', user.id)
-    .single();
+  const { data: member } = await supabase.from('group_members').select('*').eq('group_id', groupId).eq('user_id', user.id).single();
+  const { data: request } = await supabase.from('group_requests').select('*').eq('group_id', groupId).eq('user_id', user.id).single();
 
-  return !!data;
+  return { isMember: !!member, isPending: !!request };
 }
 
-// 5. Fetches all groups the current user has joined (for the Dashboard)
 export async function getUserGroups() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-
-  const { data, error } = await supabase
-    .from('group_members')
-    .select(`
-      group_id,
-      study_groups (
-        name,
-        location_preference,
-        courses (
-          code
-        )
-      )
-    `)
-    .eq('user_id', user.id);
-
-  if (error) {
-    console.error("Failed to fetch user groups:", error.message);
-    return [];
-  }
-
-  return data;
+  const { data } = await supabase.from('group_members').select(`group_id, study_groups (name, location_preference, courses (code))`).eq('user_id', user.id);
+  return data || [];
 }
 
-// 6. Fetches everything needed for the Workspace (Group details + Member profiles)
+// UPGRADED: Now fetches Resources and Pending Requests too!
 export async function getGroupWorkspaceData(groupId: string) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-  // Get the Group and Course Info
-  const { data: group, error: groupError } = await supabase
-    .from('study_groups')
-    .select(`*, courses (code, name)`)
-    .eq('id', groupId)
-    .single();
+  const { data: group } = await supabase.from('study_groups').select(`*, courses (code, name)`).eq('id', groupId).single();
+  if (!group) return null;
 
-  if (groupError || !group) return null;
-
-  // Get the IDs of everyone who joined this group
-  const { data: members } = await supabase
-    .from('group_members')
-    .select('user_id')
-    .eq('group_id', groupId);
-
+  const { data: members } = await supabase.from('group_members').select('user_id').eq('group_id', groupId);
   const userIds = members?.map(m => m.user_id) || [];
+  const { data: profiles } = await supabase.from('profiles').select('id, name, department, skill_level').in('id', userIds);
 
-  // Fetch the public profiles of those specific users
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('name, department, skill_level')
-    .in('id', userIds);
+  const { data: resources } = await supabase.from('group_resources').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
 
-  // Combine it all together
-  return {
-    ...group,
-    memberProfiles: profiles || []
-  };
+  const { data: requests } = await supabase.from('group_requests').select('id, user_id').eq('group_id', groupId);
+  const reqUserIds = requests?.map(r => r.user_id) || [];
+  const { data: reqProfiles } = await supabase.from('profiles').select('id, name, department').in('id', reqUserIds);
+
+  const pendingRequests = requests?.map(req => ({
+    requestId: req.id, userId: req.user_id, profile: reqProfiles?.find(p => p.id === req.user_id)
+  })) || [];
+
+  return { ...group, memberProfiles: profiles || [], resources: resources || [], pendingRequests, currentUserId: currentUser?.id };
+}
+
+// --- NEW SERVER ACTIONS ---
+
+export async function sendJoinRequest(groupId: string) {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (user) {
+    const { error } = await supabase.from('group_requests').insert({ 
+      group_id: groupId, 
+      user_id: user.id 
+    });
+    if (error) throw new Error(error.message);
+  }
+  
+  // THIS IS THE FIX: Tells Next.js to throw away the old cached page
+  revalidatePath(`/workspace/${groupId}`);
+}
+
+export async function resolveRequest(formData: FormData) {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const requestId = formData.get('requestId') as string;
+  const userId = formData.get('userId') as string;
+  const groupId = formData.get('groupId') as string;
+  const action = formData.get('action') as string;
+
+  if (action === 'approve') await supabase.from('group_members').insert({ group_id: groupId, user_id: userId });
+  await supabase.from('group_requests').delete().eq('id', requestId);
+  revalidatePath(`/workspace/${groupId}`); // Refreshes the page instantly
+}
+
+export async function addResource(formData: FormData) {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const { data: { user } } = await supabase.auth.getUser();
+  const groupId = formData.get('groupId') as string;
+  await supabase.from('group_resources').insert({
+    group_id: groupId, user_id: user?.id, title: formData.get('title'), url: formData.get('url')
+  });
+  revalidatePath(`/workspace/${groupId}`);
+}
+
+export async function reportUser(formData: FormData) {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const { data: { user } } = await supabase.auth.getUser();
+  await supabase.from('user_reports').insert({
+    reporter_id: user?.id, reported_user_id: formData.get('reportedId'), group_id: formData.get('groupId')
+  });
+  revalidatePath(`/workspace/${formData.get('groupId')}`);
 }
