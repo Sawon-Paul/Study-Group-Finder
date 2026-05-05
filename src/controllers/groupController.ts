@@ -67,6 +67,12 @@ export async function getGroupWorkspaceData(groupId: string) {
 
   const { data: resources } = await supabase.from('group_resources').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
 
+  // Match the resource to the profile of the person who uploaded it!
+  const resourcesWithUploaders = resources?.map(res => {
+    const uploader = profiles?.find(p => p.id === res.user_id);
+    return { ...res, uploaderName: uploader?.name || 'Unknown Student' };
+  }) || [];
+
   const { data: requests } = await supabase.from('group_requests').select('id, user_id').eq('group_id', groupId);
   const reqUserIds = requests?.map(r => r.user_id) || [];
   const { data: reqProfiles } = await supabase.from('profiles').select('id, name, department').in('id', reqUserIds);
@@ -75,7 +81,13 @@ export async function getGroupWorkspaceData(groupId: string) {
     requestId: req.id, userId: req.user_id, profile: reqProfiles?.find(p => p.id === req.user_id)
   })) || [];
 
-  return { ...group, memberProfiles: profiles || [], resources: resources || [], pendingRequests, currentUserId: currentUser?.id };
+  return { 
+    ...group, 
+    memberProfiles: profiles || [], 
+    resources: resourcesWithUploaders, 
+    pendingRequests, 
+    currentUserId: currentUser?.id 
+  };
 }
 
 // --- NEW SERVER ACTIONS ---
@@ -115,12 +127,33 @@ export async function addResource(formData: FormData) {
   const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
   const groupId = formData.get('groupId') as string;
-  await supabase.from('group_resources').insert({
-    group_id: groupId, user_id: user?.id, title: formData.get('title'), url: formData.get('url')
-  });
+  
+  // Grab the physical file from the form
+  const file = formData.get('file') as File;
+  
+  if (file && file.size > 0) {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = `${groupId}/${fileName}`;
+
+    // Upload the file to our new Supabase bucket
+    const { error: uploadError } = await supabase.storage.from('resources').upload(filePath, file);
+    
+    if (!uploadError) {
+      // Get the public URL for the file
+      const { data } = supabase.storage.from('resources').getPublicUrl(filePath);
+      
+      // Save the record to the database
+      await supabase.from('group_resources').insert({
+        group_id: groupId, 
+        user_id: user?.id, 
+        title: file.name, // Use the actual file name
+        url: data.publicUrl
+      });
+    }
+  }
   revalidatePath(`/workspace/${groupId}`);
 }
-
 export async function reportUser(formData: FormData) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);

@@ -11,6 +11,10 @@ export default async function GroupsPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <main className="max-w-4xl mx-auto space-y-8 mt-8">
+
+        <Link href="/dashboard" className="text-gray-500 hover:text-blue-600 flex items-center gap-2 w-fit transition-colors mb-6">
+          <ArrowLeft size={20} /> Back to Dashboard
+        </Link>
         
         {/* Header */}
         <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
