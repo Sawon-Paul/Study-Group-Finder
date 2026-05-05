@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 import { getAvailableCourses } from '@/controllers/courseController'
 import Link from 'next/link'
-import { BookOpen, Users, ChevronRight } from 'lucide-react'
+import { BookOpen, Users, ChevronRight,ArrowLeft } from 'lucide-react'
 
 export default async function GroupsPage() {
   // Fetch the courses through our controller
