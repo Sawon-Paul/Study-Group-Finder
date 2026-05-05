@@ -1,10 +1,26 @@
 // src/app/workspace/[id]/page.tsx
-import { getGroupWorkspaceData, resolveRequest, addResource, deleteResource } from '@/controllers/groupController'
+import { 
+  getGroupWorkspaceData, 
+  resolveRequest, 
+  addResource, 
+  deleteResource 
+} from '@/controllers/groupController'
 import Link from 'next/link'
-import { ArrowLeft, Users, MapPin, BookOpen, GraduationCap, Paperclip, Check, X, Calendar } from 'lucide-react'
+import { 
+  ArrowLeft, 
+  Users, 
+  MapPin, 
+  BookOpen, 
+  GraduationCap, 
+  Paperclip, 
+  Check, 
+  X, 
+  Calendar 
+} from 'lucide-react'
 import { notFound } from 'next/navigation'
 import ReportButton from '@/components/ReportButton'
 
+// Force Next.js to fetch fresh data on every visit (Speed/Real-time fix)
 export const dynamic = 'force-dynamic';
 
 export default async function GroupWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,9 +28,14 @@ export default async function GroupWorkspacePage({ params }: { params: Promise<{
   const workspaceData = await getGroupWorkspaceData(id);
 
   if (!workspaceData) notFound();
+  
   const course = workspaceData.courses as any;
   const isCreator = workspaceData.created_by === workspaceData.currentUserId;
-  const createdDate = new Date(workspaceData.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const createdDate = new Date(workspaceData.created_at).toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -42,7 +63,7 @@ export default async function GroupWorkspacePage({ params }: { params: Promise<{
           </div>
         </div>
 
-        {/* ADMIN PANEL */}
+        {/* ADMIN PANEL: Only visible to Creator if there are pending requests */}
         {isCreator && workspaceData.pendingRequests.length > 0 && (
           <div className="bg-amber-50 p-6 rounded-xl border border-amber-200">
             <h2 className="font-bold text-amber-800 mb-4 flex items-center gap-2">
@@ -77,6 +98,8 @@ export default async function GroupWorkspacePage({ params }: { params: Promise<{
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
           <div className="md:col-span-1 space-y-6">
+            
+            {/* Location Box */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <MapPin className="text-blue-600" size={20} /> Location
@@ -87,38 +110,56 @@ export default async function GroupWorkspacePage({ params }: { params: Promise<{
             </div>
 
             {/* RESOURCE SHARING WITH FILE UPLOAD */}
-            <div className="space-y-3 mb-6 max-h-48 overflow-y-auto pr-2">
-              {workspaceData.resources.length === 0 ? (
-                <p className="text-sm text-gray-500 italic">No files shared yet.</p>
-              ) : (
-                workspaceData.resources.map((res: any) => (
-                  <div key={res.id} className="group relative flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-all">
-                    <a href={res.url} target="_blank" rel="noopener noreferrer" className="flex-grow min-w-0">
-                      <p className="text-sm font-bold text-blue-700 truncate">{res.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">Shared by {res.uploaderName}</p>
-                    </a>
-                    
-                    {/* ONLY show the delete button if the logged-in user uploaded this specific file */}
-                    {res.user_id === workspaceData.currentUserId && (
-                      <form action={deleteResource} className="ml-2">
-                        <input type="hidden" name="resourceId" value={res.id} />
-                        <input type="hidden" name="fileUrl" value={res.url} />
-                        <input type="hidden" name="groupId" value={workspaceData.id} />
-                        <button type="submit" title="Delete File" className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors">
-                          <X size={16} /> {/* Make sure 'X' is imported from 'lucide-react' at the top */}
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                ))
-              )}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Paperclip className="text-blue-600" size={20} /> Shared Files
+              </h2>
+              
+              {/* File List */}
+              <div className="space-y-3 mb-6 max-h-48 overflow-y-auto pr-2">
+                {workspaceData.resources.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No files shared yet.</p>
+                ) : (
+                  workspaceData.resources.map((res: any) => (
+                    <div key={res.id} className="group relative flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-all">
+                      <a href={res.url} target="_blank" rel="noopener noreferrer" className="flex-grow min-w-0">
+                        <p className="text-sm font-bold text-blue-700 truncate">{res.title}</p>
+                        <p className="text-xs text-gray-500 mt-1">By {res.uploaderName}</p>
+                      </a>
+                      
+                      {/* ONLY show the delete button if the logged-in user uploaded this specific file */}
+                      {res.user_id === workspaceData.currentUserId && (
+                        <form action={deleteResource} className="ml-2">
+                          <input type="hidden" name="resourceId" value={res.id} />
+                          <input type="hidden" name="fileUrl" value={res.url} />
+                          <input type="hidden" name="groupId" value={workspaceData.id} />
+                          <button type="submit" title="Delete File" className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors">
+                            <X size={16} />
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Upload Form */}
+              <form action={addResource} className="border-t border-gray-100 pt-4 space-y-3">
+                <input type="hidden" name="groupId" value={workspaceData.id} />
+                <div className="relative">
+                  <input type="file" name="file" required className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+                </div>
+                <button type="submit" className="w-full py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors text-sm shadow-sm">
+                  Upload File
+                </button>
+              </form>
             </div>
           </div>
 
           {/* Member Roster */}
           <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Users className="text-blue-600" /> Study Partners
+              <Users className="text-blue-600" /> Study Partners ({workspaceData.memberProfiles.length})
             </h2>
             
             <div className="grid grid-cols-1 gap-4">
@@ -135,7 +176,7 @@ export default async function GroupWorkspacePage({ params }: { params: Promise<{
                       <p className="text-sm text-gray-500">{profile.department} • {profile.skill_level}</p>
                     </div>
                   </div>
-                  {/* Interactive Report Button */}
+                  {/* Interactive Report Button - Hidden for the current user */}
                   {profile.id !== workspaceData.currentUserId && (
                     <ReportButton reportedId={profile.id} groupId={workspaceData.id} />
                   )}
