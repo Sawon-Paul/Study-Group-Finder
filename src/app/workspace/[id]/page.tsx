@@ -88,32 +88,31 @@ export default async function GroupWorkspacePage({ params }: { params: Promise<{
             </div>
 
             {/* RESOURCE SHARING WITH FILE UPLOAD */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <Paperclip className="text-blue-600" size={20} /> Shared Files
-              </h2>
-              
-              <div className="space-y-3 mb-6 max-h-48 overflow-y-auto">
-                {workspaceData.resources.length === 0 ? (
-                  <p className="text-sm text-gray-500 italic">No files shared yet.</p>
-                ) : (
-                  workspaceData.resources.map((res: any) => (
-                    <a key={res.id} href={res.url} target="_blank" rel="noopener noreferrer" className="block p-3 bg-gray-50 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-all">
+            <div className="space-y-3 mb-6 max-h-48 overflow-y-auto pr-2">
+              {workspaceData.resources.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No files shared yet.</p>
+              ) : (
+                workspaceData.resources.map((res: any) => (
+                  <div key={res.id} className="group relative flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-all">
+                    <a href={res.url} target="_blank" rel="noopener noreferrer" className="flex-grow min-w-0">
                       <p className="text-sm font-bold text-blue-700 truncate">{res.title}</p>
                       <p className="text-xs text-gray-500 mt-1">Shared by {res.uploaderName}</p>
                     </a>
-                  ))
-                )}
-              </div>
-
-              {/* Physical File Upload Form */}
-              <form action={addResource} className="border-t border-gray-100 pt-4 space-y-3">
-                <input type="hidden" name="groupId" value={workspaceData.id} />
-                <input type="file" name="file" required className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                <button type="submit" className="w-full py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors text-sm">
-                  Upload File
-                </button>
-              </form>
+                    
+                    {/* ONLY show the delete button if the logged-in user uploaded this specific file */}
+                    {res.user_id === workspaceData.currentUserId && (
+                      <form action={deleteResource} className="ml-2">
+                        <input type="hidden" name="resourceId" value={res.id} />
+                        <input type="hidden" name="fileUrl" value={res.url} />
+                        <input type="hidden" name="groupId" value={workspaceData.id} />
+                        <button type="submit" title="Delete File" className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors">
+                          <X size={16} /> {/* Make sure 'X' is imported from 'lucide-react' at the top */}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
 

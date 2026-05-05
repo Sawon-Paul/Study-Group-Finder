@@ -58,24 +58,34 @@ export async function getGroupWorkspaceData(groupId: string) {
   const supabase = createClient(cookieStore);
   const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-  const { data: group } = await supabase.from('study_groups').select(`*, courses (code, name)`).eq('id', groupId).single();
+  // SPEED FIX: Fetch the Group, Members, Resources, and Requests at the EXACT SAME TIME
+  const [
+    { data: group },
+    { data: members },
+    { data: resources },
+    { data: requests }
+  ] = await Promise.all([
+    supabase.from('study_groups').select(`*, courses (code, name)`).eq('id', groupId).single(),
+    supabase.from('group_members').select('user_id').eq('group_id', groupId),
+    supabase.from('group_resources').select('*').eq('group_id', groupId).order('created_at', { ascending: false }),
+    supabase.from('group_requests').select('id, user_id').eq('group_id', groupId)
+  ]);
+
   if (!group) return null;
 
-  const { data: members } = await supabase.from('group_members').select('user_id').eq('group_id', groupId);
+  // Now fetch profiles for the members and requesters
   const userIds = members?.map(m => m.user_id) || [];
-  const { data: profiles } = await supabase.from('profiles').select('id, name, department, skill_level').in('id', userIds);
+  const reqUserIds = requests?.map(r => r.user_id) || [];
+  
+  const [ { data: profiles }, { data: reqProfiles } ] = await Promise.all([
+    supabase.from('profiles').select('id, name, department, skill_level').in('id', userIds),
+    supabase.from('profiles').select('id, name, department').in('id', reqUserIds)
+  ]);
 
-  const { data: resources } = await supabase.from('group_resources').select('*').eq('group_id', groupId).order('created_at', { ascending: false });
-
-  // Match the resource to the profile of the person who uploaded it!
   const resourcesWithUploaders = resources?.map(res => {
     const uploader = profiles?.find(p => p.id === res.user_id);
     return { ...res, uploaderName: uploader?.name || 'Unknown Student' };
   }) || [];
-
-  const { data: requests } = await supabase.from('group_requests').select('id, user_id').eq('group_id', groupId);
-  const reqUserIds = requests?.map(r => r.user_id) || [];
-  const { data: reqProfiles } = await supabase.from('profiles').select('id, name, department').in('id', reqUserIds);
 
   const pendingRequests = requests?.map(req => ({
     requestId: req.id, userId: req.user_id, profile: reqProfiles?.find(p => p.id === req.user_id)
@@ -90,76 +100,27 @@ export async function getGroupWorkspaceData(groupId: string) {
   };
 }
 
-// --- NEW SERVER ACTIONS ---
+// ... keep addResource, resolveRequest, reportUser as they are ...
 
-export async function sendJoinRequest(groupId: string) {
+// NEW: Delete a resource and the physical file
+export async function deleteResource(formData: FormData) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const { data: { user } } = await supabase.auth.getUser();
   
-  if (user) {
-    const { error } = await supabase.from('group_requests').insert({ 
-      group_id: groupId, 
-      user_id: user.id 
-    });
-    if (error) throw new Error(error.message);
-  }
-  
-  // THIS IS THE FIX: Tells Next.js to throw away the old cached page
-  revalidatePath(`/workspace/${groupId}`);
-}
-
-export async function resolveRequest(formData: FormData) {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const requestId = formData.get('requestId') as string;
-  const userId = formData.get('userId') as string;
+  const resourceId = formData.get('resourceId') as string;
+  const fileUrl = formData.get('fileUrl') as string;
   const groupId = formData.get('groupId') as string;
-  const action = formData.get('action') as string;
 
-  if (action === 'approve') await supabase.from('group_members').insert({ group_id: groupId, user_id: userId });
-  await supabase.from('group_requests').delete().eq('id', requestId);
-  revalidatePath(`/workspace/${groupId}`); // Refreshes the page instantly
-}
-
-export async function addResource(formData: FormData) {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const { data: { user } } = await supabase.auth.getUser();
-  const groupId = formData.get('groupId') as string;
-  
-  // Grab the physical file from the form
-  const file = formData.get('file') as File;
-  
-  if (file && file.size > 0) {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = `${groupId}/${fileName}`;
-
-    // Upload the file to our new Supabase bucket
-    const { error: uploadError } = await supabase.storage.from('resources').upload(filePath, file);
-    
-    if (!uploadError) {
-      // Get the public URL for the file
-      const { data } = supabase.storage.from('resources').getPublicUrl(filePath);
-      
-      // Save the record to the database
-      await supabase.from('group_resources').insert({
-        group_id: groupId, 
-        user_id: user?.id, 
-        title: file.name, // Use the actual file name
-        url: data.publicUrl
-      });
-    }
+  // 1. Extract the file path from the URL so we can delete the physical file
+  const urlParts = fileUrl.split('/resources/');
+  if (urlParts.length > 1) {
+    const filePath = urlParts[1];
+    await supabase.storage.from('resources').remove([filePath]);
   }
+
+  // 2. Delete the record from the database
+  await supabase.from('group_resources').delete().eq('id', resourceId);
+  
+  // 3. Refresh the page
   revalidatePath(`/workspace/${groupId}`);
-}
-export async function reportUser(formData: FormData) {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const { data: { user } } = await supabase.auth.getUser();
-  await supabase.from('user_reports').insert({
-    reporter_id: user?.id, reported_user_id: formData.get('reportedId'), group_id: formData.get('groupId')
-  });
-  revalidatePath(`/workspace/${formData.get('groupId')}`);
 }
